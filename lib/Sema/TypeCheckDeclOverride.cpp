@@ -1918,6 +1918,63 @@ checkOverrideAvailability(ValueDecl *override, ValueDecl *base) {
   return result;
 }
 
+/// Retrieve the declared type repr of an overriding declaration, which can be
+/// wrapped in parentheses to silence the warning about overriding a member of
+/// an imported Objective-C class from an extension.
+static TypeRepr *getDeclaredTypeReprForOverride(ValueDecl *override) {
+  if (auto *var = dyn_cast<VarDecl>(override))
+    return var->getTypeReprOrParentPatternTypeRepr();
+  if (auto *subscript = dyn_cast<SubscriptDecl>(override))
+    return subscript->getElementTypeRepr();
+  if (auto *func = dyn_cast<FuncDecl>(override))
+    return func->getResultTypeRepr();
+  return nullptr;
+}
+
+/// Warn about an override declared in an extension of a class imported from
+/// Objective-C. Such an override is emitted as a category method; if the
+/// extended class or another category also implements the same selector, it
+/// is unspecified which implementation is used at runtime.
+static void diagnoseOverrideInExtensionOfObjCClass(ValueDecl *override,
+                                                   ValueDecl *base) {
+  auto *ext = dyn_cast<ExtensionDecl>(override->getDeclContext());
+  if (!ext || !base->isObjC())
+    return;
+
+  // Overrides in an '@objc @implementation' extension provide the primary
+  // implementation of the class and are fine.
+  if (ext->isObjCImplementation())
+    return;
+
+  auto *extendedClass = ext->getSelfClassDecl();
+  if (!extendedClass || !extendedClass->hasClangNode())
+    return;
+
+  // The Swift overlay of the module that owns the class coordinates with it,
+  // so overrides there are deliberate.
+  if (override->getModuleContext()->isSameModuleLookingThroughOverlays(
+          extendedClass->getModuleContext()))
+    return;
+
+  // Allow silencing this warning by writing parentheses around the
+  // declared type.
+  TypeRepr *declaredTypeRepr = getDeclaredTypeReprForOverride(override);
+  if (auto *tupleRepr = dyn_cast_or_null<TupleTypeRepr>(declaredTypeRepr))
+    if (tupleRepr->isParenType())
+      return;
+
+  auto &diags = override->getASTContext().Diags;
+  diags.diagnose(override, diag::override_in_extension_of_objc_class, base,
+                 extendedClass->getName());
+  if (declaredTypeRepr) {
+    diags
+        .diagnose(declaredTypeRepr->getStartLoc(),
+                  diag::override_in_extension_of_objc_class_silence)
+        .fixItInsert(declaredTypeRepr->getStartLoc(), "(")
+        .fixItInsertAfter(declaredTypeRepr->getEndLoc(), ")");
+  }
+}
+
 static bool checkSingleOverride(ValueDecl *override, ValueDecl *base) {
   // This can happen with circular inheritance.
   // FIXME: This shouldn't be possible once name lookup goes through the
@@ -2067,6 +2124,12 @@ static bool checkSingleOverride(ValueDecl *override, ValueDecl *base) {
 
     return true;
   }
+
+  // An override of an Objective-C member declared in an extension of an
+  // imported class becomes a category method, with unspecified runtime
+  // behavior if another implementation of the same selector exists.
+  if (!isAccessor)
+    diagnoseOverrideInExtensionOfObjCClass(override, base);
 
   // If the overriding declaration does not have the 'override' modifier on
   // it, complain.

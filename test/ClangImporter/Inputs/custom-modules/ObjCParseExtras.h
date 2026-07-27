@@ -245,6 +245,11 @@ struct TrivialToCopy {
 @interface OverrideInExtensionBase : NSObject
 - (void)method;
 - (void)accessWarning;
+- (int)valueMethod;
+- (int)silencedValueMethod;
+@property (readonly) int intProperty;
+@property (readonly) int silencedIntProperty;
+- (nonnull id)objectAtIndexedSubscript:(int)i;
 @end
 
 @interface OverrideInExtensionSub : OverrideInExtensionBase

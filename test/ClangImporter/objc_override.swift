@@ -136,12 +136,40 @@ class MyHashableNSObject: NSObject {
 
 // rdar://problem/47557376
 // Adding an override to someone else's class in an extension like this isn't
-// really sound, but it's allowed in Objective-C too.
+// really sound, but it's allowed in Objective-C too. Warn, since it is
+// unspecified which implementation of the selector wins at runtime.
 extension OverrideInExtensionSub {
   open override func method() {}
+  // expected-warning@-1 {{override of instance method 'method()' in an extension of Objective-C class 'OverrideInExtensionSub' may cause unpredictable runtime behavior}}
+
+  override func valueMethod() -> Int32 { return 2 }
+  // expected-warning@-1 {{override of instance method 'valueMethod()' in an extension of Objective-C class 'OverrideInExtensionSub' may cause unpredictable runtime behavior}}
+  // expected-note@-2 {{add parentheses to silence this warning}}
+
+  override var intProperty: Int32 { return 2 }
+  // expected-warning@-1 {{override of property 'intProperty' in an extension of Objective-C class 'OverrideInExtensionSub' may cause unpredictable runtime behavior}}
+  // expected-note@-2 {{add parentheses to silence this warning}}
+
+  override subscript(i: Int32) -> Any { return 0 }
+  // expected-warning@-1 {{override of subscript 'subscript(_:)' in an extension of Objective-C class 'OverrideInExtensionSub' may cause unpredictable runtime behavior}}
+  // expected-note@-2 {{add parentheses to silence this warning}}
 }
 public extension OverrideInExtensionSub {
   open override func accessWarning() {} // expected-warning {{'open' modifier conflicts with extension's default access of 'public'}}
+  // expected-warning@-1 {{override of instance method 'accessWarning()' in an extension of Objective-C class 'OverrideInExtensionSub' may cause unpredictable runtime behavior}}
+}
+
+// Parentheses around the declared type silence the warning.
+extension OverrideInExtensionSub {
+  override func silencedValueMethod() -> (Int32) { return 2 } // no-warning
+  override var silencedIntProperty: (Int32) { return 2 } // no-warning
+}
+
+// Overriding in an extension of a Swift-defined subclass does not produce a
+// category on a class the user does not own, so it should not warn.
+class OverrideInExtensionSwiftSub : OverrideInExtensionBase {}
+extension OverrideInExtensionSwiftSub {
+  override func method() {} // no-warning
 }
 
 // FIXME: Remove -verify-ignore-unknown.

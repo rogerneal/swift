@@ -3736,6 +3736,13 @@ NOTE(overridden_here,none,
 NOTE(overridden_here_can_be_objc,none,
      "add '@objc' to make this declaration overridable", ())
 
+WARNING(override_in_extension_of_objc_class,none,
+        "override of %kind0 in an extension of Objective-C class %1 may "
+        "cause unpredictable runtime behavior",
+        (const ValueDecl *, DeclName))
+NOTE(override_in_extension_of_objc_class_silence,none,
+     "add parentheses to silence this warning", ())
+
 ERROR(missing_override,none,
       "overriding declaration requires an 'override' keyword", ())
 WARNING(missing_override_warn,none,
