@@ -34,19 +34,51 @@ do {
   _ = x.zang as (Int) -> ()
 }
 
-// Invalid case
+// Invalid cases
 do {
   var x = 123 // expected-note {{captured value declared here}}
   // expected-warning@-1 {{variable 'x' was never mutated; consider changing to 'let' constant}}
 
   func local() {
-    // expected-error@-1 {{closure captures 'x' before it is declared}}
     _ = x // expected-note {{captured here}}
   }
 
-  class Bar {
+  class Bar { // expected-note {{type declared here}}
     func zang() {
-      local()
+      local() // expected-error {{local function 'local' cannot be used within a class declaration because it captures 'x' from an outer scope}}
+    }
+  }
+}
+
+// https://github.com/swiftlang/swift/issues/86200
+do {
+  var x = 0 // expected-note {{captured value declared here}}
+  // expected-warning@-1 {{variable 'x' was never mutated; consider changing to 'let' constant}}
+
+  func bar() {
+    _ = x // expected-note {{captured here}}
+  }
+
+  struct S { // expected-note {{type declared here}}
+    func baz() {
+      bar() // expected-error {{local function 'bar' cannot be used within a struct declaration because it captures 'x' from an outer scope}}
+    }
+  }
+}
+
+// Ditto, but with an anonymous closure referencing the local function.
+do {
+  var y = 0 // expected-note {{captured value declared here}}
+  // expected-warning@-1 {{variable 'y' was never mutated; consider changing to 'let' constant}}
+
+  func local() {
+    _ = y // expected-note {{captured here}}
+  }
+
+  class Baz { // expected-note {{type declared here}}
+    func zang() {
+      let fn = { local() } // expected-error {{closure cannot be used within a class declaration because it captures 'y' from an outer scope}}
+      fn()
     }
   }
 }

@@ -155,6 +155,13 @@ ERROR(capture_before_declaration,none,
       "closure captures %0 before it is declared", (Identifier))
 NOTE(captured_value_declared_here,none,
      "captured value declared here", ())
+ERROR(transitive_capture_across_type_decl,none,
+      "%select{local function %2|closure}1 cannot be used within a "
+      "%kindonly0 declaration because it captures %base3 from an "
+      "outer scope",
+      (const NominalTypeDecl *, unsigned, DeclName, const ValueDecl *))
+NOTE(type_declared_here,none,
+     "type declared here", ())
 
 #define SELECT_ESCAPING_CLOSURE_KIND "escaping %select{local function|closure|autoclosure}0"
 

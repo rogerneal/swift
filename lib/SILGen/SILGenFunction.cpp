@@ -653,19 +653,53 @@ void SILGenFunction::emitCaptures(SILLocation loc,
     if (found == VarLocs.end()) {
       auto &Diags = getASTContext().Diags;
 
-      SourceLoc loc;
+      SourceLoc diagLoc;
       if (closure.kind == SILDeclRef::Kind::DefaultArgGenerator) {
         auto *param = getParameterAt(closure.getDecl(),
                                      closure.defaultArgIndex);
         assert(param);
-        loc = param->getLoc();
+        diagLoc = param->getLoc();
       } else {
         auto f = *closure.getAnyFunctionRef();
-        loc = f.getLoc();
+        diagLoc = f.getLoc();
       }
 
-      Diags.diagnose(loc, diag::capture_before_declaration,
-                     vd->getBaseIdentifier());
+      // A type declaration between this function and the variable's scope
+      // means the variable can never be available here, regardless of the
+      // order of declarations. Sema allows a method of a local type to
+      // reference a local function on the assumption that it has no
+      // captures, so this is where the capturing case gets diagnosed.
+      const NominalTypeDecl *crossedType = nullptr;
+      for (auto *DC = FunctionDC; DC && DC != vd->getDeclContext();
+           DC = DC->getParent()) {
+        if (auto *NTD = dyn_cast<NominalTypeDecl>(DC)) {
+          crossedType = NTD;
+          break;
+        }
+      }
+
+      if (crossedType) {
+        unsigned isAnonymousClosure = 1;
+        DeclName closureName;
+        if (auto fnRef = closure.getAnyFunctionRef()) {
+          if (auto *AFD = fnRef->getAbstractFunctionDecl()) {
+            isAnonymousClosure = 0;
+            closureName = DeclName(AFD->getBaseName());
+          }
+        }
+
+        // Point at the reference to the closure rather than at the closure
+        // itself.
+        if (loc.getSourceLoc().isValid())
+          diagLoc = loc.getSourceLoc();
+
+        Diags.diagnose(diagLoc, diag::transitive_capture_across_type_decl,
+                       crossedType, isAnonymousClosure, closureName, vd);
+        crossedType->diagnose(diag::type_declared_here);
+      } else {
+        Diags.diagnose(diagLoc, diag::capture_before_declaration,
+                       vd->getBaseIdentifier());
+      }
       Diags.diagnose(vd->getLoc(), diag::captured_value_declared_here);
       Diags.diagnose(capture.getLoc(), diag::value_captured_here);
 
